@@ -14,7 +14,7 @@ from PIL import Image
 import remap_engine
 import theme
 import winutil
-from theme import COLORS, FONT_FAMILY, FONT_NORMAL, FONT_SMALL, FONT_TITLE
+from theme import COLORS, FONT_FAMILY, FONT_NORMAL, FONT_SMALL
 from widgets import Checkbox, RoundButton, ThemeToggle, ToggleSwitch
 
 MOUSE_DISPLAY_NAMES = {
@@ -291,7 +291,7 @@ class App(tk.Tk):
         self.admin_banner.pack(fill="x", pady=(0, 10))
         tk.Label(
             self.admin_banner,
-            text="⚠ Not running as administrator — some apps/games may ignore remaps.",
+            text="⚠ Not running as administrator, some apps/games may ignore remaps.",
             font=FONT_SMALL, bg=bg, fg="white", anchor="w",
         ).pack(side="left", padx=12, pady=7, fill="x", expand=True)
         dismiss = tk.Label(
@@ -311,16 +311,6 @@ class App(tk.Tk):
         self.container = tk.Frame(self, bg=COLORS["bg"], padx=18, pady=16)
         self.container.pack(fill="both", expand=True)
 
-        header = tk.Frame(self.container, bg=COLORS["bg"])
-        header.pack(fill="x", pady=(0, 12))
-        tk.Label(
-            header, text="Simple Remap", font=FONT_TITLE,
-            bg=COLORS["bg"], fg=COLORS["text"],
-        ).pack(side="left")
-        ThemeToggle(
-            header, is_dark=theme.is_dark(), command=self._on_theme_toggle,
-        ).pack(side="right")
-
         toolbar = tk.Frame(self.container, bg=COLORS["bg"])
         toolbar.pack(fill="x", pady=(0, 10))
         RoundButton(
@@ -332,9 +322,12 @@ class App(tk.Tk):
         RoundButton(
             toolbar, "Delete", command=self.delete_selected, style="danger",
         ).pack(side="left", padx=(8, 0))
+        ThemeToggle(
+            toolbar, is_dark=theme.is_dark(), command=self._on_theme_toggle,
+        ).pack(side="right")
         RoundButton(
             toolbar, "Minimize to Tray", command=self.minimize_to_tray,
-        ).pack(side="right")
+        ).pack(side="right", padx=(0, 10))
 
         if not winutil.is_admin() and not self._admin_banner_dismissed:
             self._build_admin_banner()

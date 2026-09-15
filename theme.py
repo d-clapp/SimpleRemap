@@ -1,8 +1,6 @@
 # color palettes for light/dark mode
-#
-# COLORS is a single dict mutated in place on theme switch (rather than
-# reassigned) so every module that did `from theme import COLORS` keeps
-# seeing live values.
+# COLORS gets mutated in place on switch, not reassigned, so modules that
+# did "from theme import COLORS" keep seeing live values
 
 THEMES = {
     "dark": {

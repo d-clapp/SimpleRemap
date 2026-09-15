@@ -3,7 +3,24 @@
 import math
 import tkinter as tk
 
+from PIL import Image, ImageDraw, ImageTk
+
 from theme import COLORS, FONT_FAMILY
+
+# tkinter canvas shapes have no anti-aliasing, so rounded corners and
+# circles come out visibly jagged at these small sizes. ToggleSwitch and
+# Checkbox render themselves as PIL images instead: draw at a higher
+# resolution, then downscale with LANCZOS resampling for smooth edges.
+SUPERSAMPLE = 4
+
+
+def _hex_to_rgb(color):
+    color = color.lstrip("#")
+    return tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _lerp_rgb(c1, c2, t):
+    return tuple(int(c1[i] + (c2[i] - c1[i]) * t) for i in range(3))
 
 
 def _round_rect_points(x1, y1, x2, y2, r):
@@ -29,73 +46,109 @@ def draw_round_rect(canvas, x1, y1, x2, y2, r, **kwargs):
     )
 
 
-class ToggleSwitch(tk.Canvas):
-    """win11 style on/off pill switch"""
+class ToggleSwitch(tk.Label):
+    """on/off pill switch with a sliding knob animation"""
 
     WIDTH = 40
     HEIGHT = 22
+    STEPS = 12
+    STEP_MS = 12
 
     def __init__(self, parent, value=True, command=None, bg=None, **kwargs):
         super().__init__(
             parent,
-            width=self.WIDTH,
-            height=self.HEIGHT,
             bg=bg or parent["bg"],
+            bd=0,
             highlightthickness=0,
             cursor="hand2",
             **kwargs,
         )
         self.value = value
         self.command = command
+        self._progress = 1.0 if value else 0.0
+        self._animating = False
+        self._photo = None
         self.bind("<Button-1>", self._on_click)
-        self._draw()
+        self._render(self._progress)
 
     def _on_click(self, event):
-        self.set(not self.value)
-        if self.command:
-            self.command(self.value)
+        if self._animating:
+            return
+        self.set(not self.value, animate=True)
 
-    def set(self, value):
+    def set(self, value, animate=False):
+        target = 1.0 if value else 0.0
         self.value = value
-        self._draw()
 
-    def _draw(self):
-        self.delete("all")
-        pad = 2
-        r = self.HEIGHT / 2
-        color = COLORS["accent"] if self.value else COLORS["toggle_off"]
-        draw_round_rect(
-            self, pad, pad, self.WIDTH - pad, self.HEIGHT - pad, r - pad,
-            fill=color, outline=color,
-        )
-        knob_r = r - pad - 3
-        cy = self.HEIGHT / 2
-        cx = self.WIDTH - r if self.value else r
-        self.create_oval(
-            cx - knob_r, cy - knob_r, cx + knob_r, cy + knob_r,
-            fill="white", outline="white",
-        )
+        if not animate or self._progress == target:
+            self._progress = target
+            self._render(target)
+            if self.command:
+                self.command(self.value)
+            return
+
+        self._animating = True
+        start = self._progress
+        steps = self.STEPS
+
+        def step(i=0):
+            t = i / steps
+            eased = t * t * (3 - 2 * t)  # smoothstep
+            self._progress = start + (target - start) * eased
+            self._render(self._progress)
+            if i < steps:
+                self.after(self.STEP_MS, lambda: step(i + 1))
+            else:
+                self._progress = target
+                self._animating = False
+                if self.command:
+                    self.command(self.value)
+
+        step()
+
+    def _render(self, progress):
+        s = SUPERSAMPLE
+        w, h = self.WIDTH * s, self.HEIGHT * s
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        off_rgb = _hex_to_rgb(COLORS["toggle_off"])
+        on_rgb = _hex_to_rgb(COLORS["accent"])
+        pill_rgb = _lerp_rgb(off_rgb, on_rgb, progress)
+
+        pad = 2 * s
+        r = h / 2 - pad
+        draw.rounded_rectangle([pad, pad, w - pad, h - pad], radius=r, fill=pill_rgb)
+
+        knob_r = r - 3 * s
+        cy = h / 2
+        cx = (pad + r) + (w - 2 * pad - 2 * r) * progress
+        draw.ellipse([cx - knob_r, cy - knob_r, cx + knob_r, cy + knob_r], fill="white")
+
+        img = img.resize((self.WIDTH, self.HEIGHT), Image.LANCZOS)
+        self._photo = ImageTk.PhotoImage(img)
+        self.config(image=self._photo)
 
 
-class Checkbox(tk.Canvas):
-    """win11 style square checkbox"""
+class Checkbox(tk.Label):
+    """clean, anti-aliased checkbox"""
 
     SIZE = 18
 
     def __init__(self, parent, value=False, command=None, bg=None, **kwargs):
         super().__init__(
             parent,
-            width=self.SIZE,
-            height=self.SIZE,
             bg=bg or parent["bg"],
+            bd=0,
             highlightthickness=0,
             cursor="hand2",
             **kwargs,
         )
         self.value = value
         self.command = command
+        self._photo = None
         self.bind("<Button-1>", self._on_click)
-        self._draw()
+        self._render()
 
     def _on_click(self, event):
         self.set(not self.value)
@@ -104,30 +157,34 @@ class Checkbox(tk.Canvas):
 
     def set(self, value):
         self.value = value
-        self._draw()
+        self._render()
 
-    def _draw(self):
-        self.delete("all")
-        s = self.SIZE
-        r = 4
+    def _render(self):
+        s = SUPERSAMPLE
+        size = self.SIZE * s
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        r = size * 0.22
+
         if self.value:
-            draw_round_rect(
-                self, 1, 1, s - 1, s - 1, r,
-                fill=COLORS["accent"], outline=COLORS["accent"],
-            )
-            self.create_line(
-                4, s / 2, s / 2 - 1, s - 5, width=2,
-                fill="white", capstyle=tk.ROUND,
-            )
-            self.create_line(
-                s / 2 - 1, s - 5, s - 3, 4, width=2,
-                fill="white", capstyle=tk.ROUND,
-            )
+            draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=r, fill=COLORS["accent"])
+            lw = max(2, round(size * 0.09))
+            p1 = (size * 0.23, size * 0.52)
+            p2 = (size * 0.42, size * 0.72)
+            p3 = (size * 0.80, size * 0.28)
+            draw.line([p1, p2, p3], fill="white", width=lw, joint="curve")
+            for p in (p1, p3):
+                draw.ellipse([p[0] - lw / 2, p[1] - lw / 2, p[0] + lw / 2, p[1] + lw / 2], fill="white")
         else:
-            draw_round_rect(
-                self, 1, 1, s - 1, s - 1, r,
-                fill=COLORS["card_bg"], outline=COLORS["border"], width=1.5,
+            border = max(2, round(size * 0.085))
+            draw.rounded_rectangle(
+                [border / 2, border / 2, size - 1 - border / 2, size - 1 - border / 2],
+                radius=r, outline=COLORS["border"], width=border,
             )
+
+        img = img.resize((self.SIZE, self.SIZE), Image.LANCZOS)
+        self._photo = ImageTk.PhotoImage(img)
+        self.config(image=self._photo)
 
 
 class RoundButton(tk.Canvas):
