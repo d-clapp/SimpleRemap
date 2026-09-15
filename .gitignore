@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+remaps.json
+build/
+dist/
+*.spec
+.claude/
