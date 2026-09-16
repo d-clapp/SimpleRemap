@@ -491,6 +491,14 @@ class App(tk.Tk):
         )
 
     def save_edited_remap(self, remap, from_result, to_result):
+        if not any(r is remap for r in self.remaps):
+            # deleted (e.g. from another control) while this dialog was open
+            messagebox.showerror(
+                "Can't save remap",
+                "This remap no longer exists, it may have been deleted.",
+            )
+            return
+
         error = remap_engine.validate_remap(
             self.remaps,
             from_result["type"], from_result["value"],

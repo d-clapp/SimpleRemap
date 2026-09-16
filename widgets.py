@@ -74,16 +74,19 @@ class ToggleSwitch(tk.Label):
     def _on_click(self, event):
         if self._animating:
             return
-        self.set(not self.value, animate=True)
+        self.set(not self.value, animate=True, notify=True)
 
-    def set(self, value, animate=False):
+    def set(self, value, animate=False, notify=False):
+        # notify=False by default (like Checkbox.set()) so a caller that
+        # already manages its own state/save+apply, e.g. a bulk action,
+        # doesn't also trigger this widget's command as a side effect
         target = 1.0 if value else 0.0
         self.value = value
 
         if not animate or self._progress == target:
             self._progress = target
             self._render(target)
-            if self.command:
+            if notify and self.command:
                 self.command(self.value)
             return
 
@@ -101,7 +104,7 @@ class ToggleSwitch(tk.Label):
             else:
                 self._progress = target
                 self._animating = False
-                if self.command:
+                if notify and self.command:
                     self.command(self.value)
 
         step()
