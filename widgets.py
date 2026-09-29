@@ -1,49 +1,31 @@
-# reusable windows 11 style tkinter widgets (canvas-drawn, rounded)
+# reusable windows 11 style tkinter widgets (rendered as anti-aliased
+# PIL bitmaps, since tkinter canvas shapes have no anti-aliasing and
+# come out visibly jagged at these small sizes)
 
 import math
 import tkinter as tk
+import tkinter.font as tkfont
 
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageColor, ImageDraw, ImageTk
 
 from theme import COLORS, FONT_FAMILY
 
-# tkinter canvas shapes have no anti-aliasing, so rounded corners and
-# circles come out visibly jagged at these small sizes. ToggleSwitch and
-# Checkbox render themselves as PIL images instead: draw at a higher
-# resolution, then downscale with LANCZOS resampling for smooth edges.
+# draw at a higher resolution, then downscale with LANCZOS for smooth edges
 SUPERSAMPLE = 4
-
-
-def _hex_to_rgb(color):
-    color = color.lstrip("#")
-    return tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
 
 
 def _lerp_rgb(c1, c2, t):
     return tuple(int(c1[i] + (c2[i] - c1[i]) * t) for i in range(3))
 
 
-def _round_rect_points(x1, y1, x2, y2, r):
-    return [
-        x1 + r, y1,
-        x2 - r, y1,
-        x2, y1,
-        x2, y1 + r,
-        x2, y2 - r,
-        x2, y2,
-        x2 - r, y2,
-        x1 + r, y2,
-        x1, y2,
-        x1, y2 - r,
-        x1, y1 + r,
-        x1, y1,
-    ]
-
-
-def draw_round_rect(canvas, x1, y1, x2, y2, r, **kwargs):
-    return canvas.create_polygon(
-        _round_rect_points(x1, y1, x2, y2, r), smooth=True, **kwargs
+def _rounded_rect_image(width, height, radius, fill, outline=None):
+    s = SUPERSAMPLE
+    img = Image.new("RGBA", (width * s, height * s), (0, 0, 0, 0))
+    ImageDraw.Draw(img).rounded_rectangle(
+        [0, 0, width * s - 1, height * s - 1], radius=radius * s,
+        fill=fill, outline=outline, width=(2 * s if outline else 0),
     )
+    return img.resize((width, height), Image.LANCZOS)
 
 
 class ToggleSwitch(tk.Label):
@@ -115,8 +97,8 @@ class ToggleSwitch(tk.Label):
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
-        off_rgb = _hex_to_rgb(COLORS["toggle_off"])
-        on_rgb = _hex_to_rgb(COLORS["accent"])
+        off_rgb = ImageColor.getrgb(COLORS["toggle_off"])
+        on_rgb = ImageColor.getrgb(COLORS["accent"])
         pill_rgb = _lerp_rgb(off_rgb, on_rgb, progress)
 
         pad = 2 * s
@@ -202,12 +184,7 @@ class RoundButton(tk.Canvas):
         self.style = style
         self.height = height
         self._font = font or (FONT_FAMILY, 10)
-
-        probe = tk.Label(parent, text=text, font=self._font)
-        probe.update_idletasks()
-        text_w = probe.winfo_reqwidth()
-        probe.destroy()
-        self.width = width or (text_w + 28)
+        self.width = width or (tkfont.Font(font=self._font).measure(text) + 28)
 
         super().__init__(
             parent,
@@ -220,6 +197,7 @@ class RoundButton(tk.Canvas):
         )
         self._pressed = False
         self._hover = False
+        self._bg_photo = None
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
         self.bind("<ButtonPress-1>", self._on_press)
@@ -242,8 +220,10 @@ class RoundButton(tk.Canvas):
             fill = hover
         else:
             fill = base
-        outline = fill if self.style != "default" else COLORS["border"]
-        draw_round_rect(self, 1, 1, self.width - 1, self.height - 1, 6, fill=fill, outline=outline)
+        outline = COLORS["border"] if self.style == "default" else None
+        img = _rounded_rect_image(self.width, self.height, 6, fill, outline)
+        self._bg_photo = ImageTk.PhotoImage(img)
+        self.create_image(0, 0, anchor="nw", image=self._bg_photo)
         self.create_text(self.width / 2, self.height / 2, text=self.text, font=self._font, fill=fg)
 
     def _on_enter(self, event):
@@ -264,13 +244,6 @@ class RoundButton(tk.Canvas):
         self._draw()
         if self.command and 0 <= event.x <= self.width and 0 <= event.y <= self.height:
             self.command()
-
-
-def _lerp_color(c1, c2, t):
-    r = int(c1[0] + (c2[0] - c1[0]) * t)
-    g = int(c1[1] + (c2[1] - c1[1]) * t)
-    b = int(c1[2] + (c2[2] - c1[2]) * t)
-    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 class ThemeToggle(tk.Canvas):
@@ -300,7 +273,7 @@ class ThemeToggle(tk.Canvas):
         self._animating = False
         self._scale = 1.0
         start = self.MOON_BG if is_dark else self.SUN_BG
-        self._bg_color = _lerp_color(start, start, 0)
+        self._bg_color = "#%02x%02x%02x" % start
         self.bind("<Button-1>", self._on_click)
         self._render()
 
@@ -317,7 +290,7 @@ class ThemeToggle(tk.Canvas):
         def step(i=0):
             t = i / steps
             self._scale = abs(math.cos(t * math.pi))
-            self._bg_color = _lerp_color(start_bg, end_bg, t)
+            self._bg_color = "#%02x%02x%02x" % _lerp_rgb(start_bg, end_bg, t)
             nonlocal showing_dark
             if t >= 0.5 and showing_dark != target_dark:
                 showing_dark = target_dark

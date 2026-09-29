@@ -36,7 +36,6 @@ THEMES = {
 FONT_FAMILY = "Segoe UI"
 FONT_NORMAL = (FONT_FAMILY, 10)
 FONT_SMALL = (FONT_FAMILY, 9)
-FONT_TITLE = (FONT_FAMILY, 15, "bold")
 
 _mode = "dark"
 COLORS = dict(THEMES[_mode])
